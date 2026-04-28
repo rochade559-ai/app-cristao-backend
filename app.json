@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "app-cristao",
+    "slug": "app-cristao",
+    "version": "1.0.0",
+    "sdkVersion": "50.0.0",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "android": {
+      "package": "com.mat19494.appcristao"
+    }
+  }
+}
