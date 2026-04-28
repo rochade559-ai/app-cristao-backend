@@ -5,6 +5,7 @@ const { AccessToken } = require('livekit-server-sdk');
 const axios = require('axios');
 
 const authRoutes = require('./src/routes/authRoutes');
+const eventosRoutes = require('./src/routes/eventosRoutes'); // 🆕 ROTAS DE EVENTOS
 
 const app = express();
 app.use(cors());
@@ -16,14 +17,19 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 
 // ============================================
-// 2. HEALTH CHECK
+// 2. ROTAS DE EVENTOS (MONTE/VIGÍLIA)
+// ============================================
+app.use('/api/eventos', eventosRoutes);
+
+// ============================================
+// 3. HEALTH CHECK
 // ============================================
 app.get('/api/health', (req, res) => 
   res.json({ status: 'online', message: 'APP CRISTÃO ONLINE!' })
 );
 
 // ============================================
-// 3. LIVEKIT - GERAR TOKEN PARA CHAMADAS
+// 4. LIVEKIT - GERAR TOKEN PARA CHAMADAS
 // ============================================
 app.post('/api/livekit/token', async (req, res) => {
   const { roomName, participantName } = req.body;
@@ -58,7 +64,7 @@ app.post('/api/livekit/token', async (req, res) => {
 });
 
 // ============================================
-// 4. CHECKOUT FALSO - DOAÇÕES VIA CHAVE PIX FIXA
+// 5. CHECKOUT FALSO - DOAÇÕES VIA CHAVE PIX FIXA
 // ============================================
 
 // Armazenamento temporário das transações (em produção use banco de dados)
@@ -278,7 +284,7 @@ app.get('/api/donations/stats', async (req, res) => {
 });
 
 // ============================================
-// 5. INICIAR SERVIDOR
+// 6. INICIAR SERVIDOR
 // ============================================
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
@@ -291,7 +297,8 @@ app.listen(PORT, () => {
   ║  🔗 http://localhost:${PORT}              ║
   ║  🎥 LiveKit token generator ativo      ║
   ║  💰 Checkout PIX (fake) ativo          ║
-  ║  📋 Chave Pix: ${PIX_KEY} ║
+  ║  📋 Chave Pix: ${PIX_KEY}                ║
+  ║  🙌 Rotas de eventos (Monte/Vigília)   ║
   ╚════════════════════════════════════════╝
   `);
 });
