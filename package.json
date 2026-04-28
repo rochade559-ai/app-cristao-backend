@@ -1,25 +1,21 @@
 {
-  "name": "app-cristao",
+  "name": "app-cristao-backend",
   "version": "1.0.0",
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "server.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.3.5",
     "axios": "^1.15.2",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "expo": "~50.0.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "livekit-server-sdk": "^2.15.2",
-    "mercadopago": "^2.12.0",
-    "pagarme": "^4.35.2",
-    "react": "18.2.0",
-    "react-native": "0.73.0",
-    "react-native-qrcode-svg": "^6.3.21",
-    "uuid": "^14.0.0"
+    "multer": "^2.1.1"
   }
 }
