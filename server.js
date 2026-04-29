@@ -5,11 +5,13 @@ const { AccessToken } = require('livekit-server-sdk');
 const axios = require('axios');
 
 const authRoutes = require('./src/routes/authRoutes');
-const eventosRoutes = require('./src/routes/eventosRoutes'); // 🆕 ROTAS DE EVENTOS
+const eventosRoutes = require('./src/routes/eventosRoutes'); // Rotas de eventos
+const testemunhosRoutes = require('./src/routes/testemunhosRoutes'); // Rotas de testemunhos
+const { moderateImage } = require('./src/services/imageModerationService'); // Serviço de moderação
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Aumentar limite para imagens base64
 
 // ============================================
 // 1. ROTAS DE AUTENTICAÇÃO
@@ -22,14 +24,46 @@ app.use('/api/auth', authRoutes);
 app.use('/api/eventos', eventosRoutes);
 
 // ============================================
-// 3. HEALTH CHECK
+// 3. ROTAS DE TESTEMUNHOS (COM MODERAÇÃO)
+// ============================================
+app.use('/api/testemunhos', testemunhosRoutes);
+
+// ============================================
+// 4. HEALTH CHECK
 // ============================================
 app.get('/api/health', (req, res) => 
   res.json({ status: 'online', message: 'APP CRISTÃO ONLINE!' })
 );
 
 // ============================================
-// 4. LIVEKIT - GERAR TOKEN PARA CHAMADAS
+// 5. MODERAÇÃO DE IMAGEM (ENDPOINT GENÉRICO)
+// ============================================
+app.post('/api/moderar/imagem', async (req, res) => {
+  const { imagem } = req.body;
+  
+  if (!imagem) {
+    return res.status(400).json({ error: 'Imagem não fornecida' });
+  }
+
+  try {
+    // Converter base64 para buffer
+    const buffer = Buffer.from(imagem, 'base64');
+    const moderation = await moderateImage(buffer);
+    
+    res.json({ 
+      safe: moderation.safe, 
+      message: moderation.message,
+      categories: moderation.reasons 
+    });
+  } catch (error) {
+    console.error('Erro na moderação:', error);
+    // Em caso de erro, permite a imagem (fail open)
+    res.json({ safe: true, message: 'Erro na moderação, imagem permitida' });
+  }
+});
+
+// ============================================
+// 6. LIVEKIT - GERAR TOKEN PARA CHAMADAS
 // ============================================
 app.post('/api/livekit/token', async (req, res) => {
   const { roomName, participantName } = req.body;
@@ -64,7 +98,7 @@ app.post('/api/livekit/token', async (req, res) => {
 });
 
 // ============================================
-// 5. CHECKOUT FALSO - DOAÇÕES VIA CHAVE PIX FIXA
+// 7. CHECKOUT FALSO - DOAÇÕES VIA CHAVE PIX FIXA
 // ============================================
 
 // Armazenamento temporário das transações (em produção use banco de dados)
@@ -72,38 +106,26 @@ const pendingTransactions = {};
 
 // Chave Pix fixa da empresa
 const PIX_KEY = 'd7de304f-cb52-42b2-a230-addabe095f55';
-const PIX_KEY_TYPE = 'uuid'; // tipo: cpf, email, telefone, uuid
+const PIX_KEY_TYPE = 'uuid';
 const PIX_RECEIVER_NAME = 'KODAFF COMERCIO E MARKETING LTDA';
 
 // Função para gerar string completa do QR Code Pix (formato BR Code)
 function generatePixQRCodeString(amount, transactionId) {
-  // Formato simplificado do BR Code para Pix
-  // Payload Format Indicator
   let payload = '000201';
-  // Merchant Account Information - GUI (BCB)
   payload += '26360014br.gov.bcb.pix0114' + PIX_KEY;
-  // Merchant Category Code
   payload += '52040000';
-  // Transaction Currency - BRL
   payload += '5303986';
-  // Transaction Amount
   const amountFormatted = amount.toFixed(2);
   const amountLength = amountFormatted.length.toString().padStart(2, '0');
   payload += `54${amountLength}${amountFormatted}`;
-  // Country Code
   payload += '5802BR';
-  // Merchant Name
   const nameLength = PIX_RECEIVER_NAME.length.toString().padStart(2, '0');
   payload += `59${nameLength}${PIX_RECEIVER_NAME}`;
-  // Merchant City (simplificado)
   payload += '6007BRASILIA';
-  // Additional Data Field - Transaction ID
   const txId = transactionId.slice(-8);
   const txIdLength = txId.length.toString().padStart(2, '0');
   payload += `62${txIdLength}${txId}`;
-  // CRC16 (simplificado - em produção usar cálculo real)
   payload += '6304E6D6';
-  
   return payload;
 }
 
@@ -115,14 +137,10 @@ app.post('/api/donations/fake-checkout', async (req, res) => {
     return res.status(400).json({ error: "Valor da doação é obrigatório e deve ser maior que zero." });
   }
 
-  // Gera um identificador único para essa transação
   const transactionId = `DON_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-  
-  // Calcula expiração (15 minutos)
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
-  // Salva no "banco" em memória
   pendingTransactions[transactionId] = {
     transactionId,
     userId: userId || 'anonymous',
@@ -131,15 +149,13 @@ app.post('/api/donations/fake-checkout', async (req, res) => {
     amount: parseFloat(amount),
     createdAt: new Date(),
     expiresAt,
-    status: 'pending', // pending, waiting_confirmation, confirmed
+    status: 'pending',
     paidAt: null,
     confirmedAt: null
   };
 
-  // Gera o QR Code string
   const qrCodeString = generatePixQRCodeString(parseFloat(amount), transactionId);
 
-  // Retorna os dados que o app vai mostrar
   res.json({
     success: true,
     transaction_id: transactionId,
@@ -200,7 +216,6 @@ app.post('/api/donations/confirm', async (req, res) => {
     return res.json({ success: true, message: 'Pagamento já registrado, aguardando confirmação manual' });
   }
   
-  // Marca como aguardando confirmação
   transaction.status = 'waiting_confirmation';
   transaction.confirmedAt = now;
   
@@ -216,7 +231,6 @@ app.post('/api/donations/confirm', async (req, res) => {
 app.post('/api/donations/admin-confirm', async (req, res) => {
   const { transactionId, adminKey } = req.body;
   
-  // Verificação simples de admin (em produção use token JWT)
   if (adminKey !== process.env.ADMIN_KEY) {
     return res.status(403).json({ error: 'Acesso não autorizado' });
   }
@@ -284,7 +298,7 @@ app.get('/api/donations/stats', async (req, res) => {
 });
 
 // ============================================
-// 6. INICIAR SERVIDOR
+// 8. INICIAR SERVIDOR
 // ============================================
 const PORT = process.env.PORT || 3333;
 app.listen(PORT, () => {
@@ -299,6 +313,8 @@ app.listen(PORT, () => {
   ║  💰 Checkout PIX (fake) ativo          ║
   ║  📋 Chave Pix: ${PIX_KEY}                ║
   ║  🙌 Rotas de eventos (Monte/Vigília)   ║
+  ║  📝 Rotas de testemunhos (com IA)      ║
+  ║  🤖 Endpoint de moderação de imagens   ║
   ╚════════════════════════════════════════╝
   `);
 });
